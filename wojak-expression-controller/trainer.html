@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>King of Expressions — AI Custom Trainer</title>
+  <meta name="description" content="Train custom facial expressions with your own face using real-time AI & KNN classification.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --green:#00dc50;--green-dim:#004d1f;--glow:rgba(0,220,80,.35);
+      --bg:#050505;--surface:#0c0c0c;--surface2:#141414;--border:#112a1d;
+      --amber:#ffb830;--amber-dim:#3d2a00;--amber-glow:rgba(255,184,48,.35);
+      --cyan:#00e5ff;--cyan-glow:rgba(0,229,255,.3);
+      --red:#ff4d4d;
+    }
+    html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--green);font-family:"Share Tech Mono",monospace}
+    body{display:flex;flex-direction:column}
+    .hidden{display:none!important}
+
+    /* ── TOP BAR ── */
+    #topbar{flex:0 0 46px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:rgba(5,5,5,.96);border-bottom:1px solid var(--border);backdrop-filter:blur(8px);z-index:10}
+    .tb-left{display:flex;align-items:center;gap:14px}
+    .tb-brand{font-family:"Outfit",sans-serif;font-weight:700;font-size:.85rem;letter-spacing:.12em;color:var(--amber);text-shadow:0 0 14px var(--amber-glow)}
+    .tb-badge{font-size:.55rem;background:rgba(0,220,80,.12);color:var(--green);border:1px solid var(--green-dim);padding:2px 7px;border-radius:3px;letter-spacing:.08em}
+    .tb-nav-link{font-size:.62rem;color:var(--cyan);text-decoration:none;border:1px solid rgba(0,229,255,.3);padding:3px 8px;border-radius:3px;transition:all .2s}
+    .tb-nav-link:hover{background:rgba(0,229,255,.12);box-shadow:0 0 10px var(--cyan-glow)}
+    .tb-right{display:flex;gap:16px;align-items:center;font-size:.62rem;letter-spacing:.1em;color:var(--green-dim)}
+    #tb-fps{color:var(--green)}
+    #tb-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1.6s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+    /* ── MAIN WORKSPACE ── */
+    #workspace{flex:1;display:flex;min-height:0;overflow:hidden}
+
+    /* Left panel: Camera & Vision */
+    #cam-section{flex:1;position:relative;background:#000;display:flex;flex-direction:column;overflow:hidden}
+    #cam-section::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:4;background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px)}
+    #video{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;pointer-events:none;z-index:-1}
+    #cam-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+    /* Camera error overlay */
+    #cam-error{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:30px}
+    .err-icon{font-size:2.5rem}
+
+    /* Floating control dock on camera */
+    #cam-controls{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:6;display:flex;gap:10px;align-items:center;background:rgba(8,8,8,.88);border:1px solid var(--border);padding:6px 14px;border-radius:24px;backdrop-filter:blur(10px);box-shadow:0 8px 30px rgba(0,0,0,.6)}
+    .btn{font-family:"Share Tech Mono",monospace;font-size:.66rem;letter-spacing:.1em;padding:7px 15px;border-radius:18px;border:1px solid;cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:6px;user-select:none}
+    .btn-record{background:var(--amber);color:#000;border-color:var(--amber);font-weight:700;box-shadow:0 0 16px var(--amber-glow)}
+    .btn-record:active,.btn-record.recording{background:#fff;color:#000;box-shadow:0 0 25px #fff;transform:scale(.97)}
+    .btn-mode{background:transparent;color:var(--green);border-color:var(--green-dim)}
+    .btn-mode.active{background:rgba(0,220,80,.15);border-color:var(--green);color:var(--green);box-shadow:0 0 10px var(--glow)}
+    .btn-secondary{background:transparent;color:var(--cyan);border-color:rgba(0,229,255,.3)}
+    .btn-secondary:hover{background:rgba(0,229,255,.12);box-shadow:0 0 10px var(--cyan-glow)}
+    .btn-danger{background:transparent;color:var(--red);border-color:rgba(255,77,77,.3)}
+    .btn-danger:hover{background:rgba(255,77,77,.12)}
+
+    /* Center/Right panel: Training Studio & Live Match */
+    #studio-panel{width:420px;flex:0 0 420px;display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--border);overflow:hidden;position:relative}
+
+    /* Live matched preview box */
+    #match-box{flex:0 0 160px;display:flex;align-items:center;background:var(--surface2);border-bottom:1px solid var(--border);padding:12px;gap:14px;position:relative}
+    #match-img-wrap{width:130px;height:130px;flex:0 0 130px;background:#050505;border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+    #match-img{max-width:96%;max-height:96%;object-fit:contain;transition:all .12s ease}
+    .match-info{flex:1;display:flex;flex-direction:column;gap:5px}
+    .match-tag{font-size:.55rem;letter-spacing:.2em;color:var(--green-dim)}
+    #match-name{font-family:"Outfit",sans-serif;font-size:1.15rem;font-weight:700;color:var(--amber);letter-spacing:.08em;text-shadow:0 0 12px var(--amber-glow)}
+    #match-conf-bar{width:100%;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden;margin-top:2px}
+    #match-conf-fill{height:100%;width:0%;background:var(--green);box-shadow:0 0 8px var(--green);transition:width .15s}
+    #match-conf-text{font-size:.58rem;color:var(--green-dim);letter-spacing:.08em}
+
+    /* Expression Training Grid */
+    #expr-grid-header{padding:10px 14px;font-size:.62rem;letter-spacing:.18em;color:var(--amber);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.3)}
+    #expr-list{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    #expr-list::-webkit-scrollbar{width:3px}
+    #expr-list::-webkit-scrollbar-thumb{background:var(--green-dim)}
+
+    .expr-card{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:all .2s;position:relative;user-select:none}
+    .expr-card:hover{border-color:rgba(0,220,80,.4);transform:translateY(-1px)}
+    .expr-card.selected{border-color:var(--amber);box-shadow:0 0 14px var(--amber-glow);background:rgba(255,184,48,.04)}
+    .expr-card.matched{border-color:var(--green);box-shadow:0 0 10px var(--glow)}
+    .ec-thumb-wrap{height:68px;width:100%;background:#060606;border-radius:4px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .ec-thumb{max-height:94%;max-width:94%;object-fit:contain}
+    .ec-row{display:flex;justify-content:space-between;align-items:center}
+    .ec-title{font-size:.58rem;font-weight:700;letter-spacing:.08em;color:var(--green);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .expr-card.selected .ec-title{color:var(--amber)}
+    .ec-badge{font-size:.50rem;padding:1px 5px;border-radius:3px;background:rgba(0,220,80,.08);color:var(--green-dim);border:1px solid rgba(0,220,80,.2)}
+    .ec-badge.has-samples{background:rgba(0,220,80,.18);color:var(--green);border-color:var(--green)}
+
+    /* Bottom action footer */
+    #studio-footer{padding:10px 14px;background:rgba(5,5,5,.98);border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+
+    /* HUD overlay on camera */
+    #hud-chip{position:absolute;top:14px;left:14px;background:rgba(0,0,0,.75);border:1px solid var(--green-dim);padding:8px 14px;border-radius:6px;backdrop-filter:blur(8px);z-index:5;font-size:.65rem;line-height:1.6}
+    #hud-target{color:var(--amber);font-weight:700}
+
+    /* Training animation ping */
+    @keyframes ping{0%{transform:scale(1);opacity:1}100%{transform:scale(1.4);opacity:0}}
+    .flash-pulse{animation:ping .35s ease-out}
+
+    #hud-notice{position:absolute;bottom:68px;left:50%;transform:translateX(-50%);z-index:7;background:rgba(255,77,77,.92);color:#fff;font-size:.66rem;font-weight:700;letter-spacing:.12em;padding:6px 16px;border-radius:14px;box-shadow:0 0 18px rgba(255,77,77,.6);pointer-events:none;transition:opacity .3s}
+    .btn-record.limit-reached{background:rgba(0,220,80,.12)!important;color:var(--green)!important;border-color:var(--green)!important;box-shadow:none!important}
+    .ec-reset-btn{background:transparent;border:1px solid rgba(255,77,77,.35);color:var(--red);border-radius:3px;font-size:.50rem;padding:2px 5px;cursor:pointer;transition:all .15s;line-height:1}
+    .ec-reset-btn:hover{background:rgba(255,77,77,.25);border-color:var(--red);color:#fff}
+    .rec-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff4d4d;animation:blink .7s infinite;margin-right:5px}
+  </style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header id="topbar">
+  <div class="tb-left">
+    <div class="tb-brand">&#x1F451; KING OF EXPRESSIONS &mdash; AI TRAINER</div>
+    <span class="tb-badge">CUSTOM CALIBRATION</span>
+    <a href="index.html" class="tb-nav-link">&#x2190; SWITCH TO MAIN CONTROLLER</a>
+  </div>
+  <div class="tb-right">
+    <span id="tb-fps">FPS: &mdash;</span>
+    <span id="tb-samples-total">0 SAMPLES TRAINED</span>
+    <div id="tb-dot"></div>
+  </div>
+</header>
+
+<!-- MAIN WORKSPACE -->
+<div id="workspace">
+
+  <!-- CAMERA PANEL -->
+  <section id="cam-section">
+    <video id="video" playsinline muted></video>
+    <canvas id="cam-canvas"></canvas>
+
+    <div id="hud-chip">
+      <div>MODE : <span id="hud-mode" style="color:var(--green)">CALIBRATION</span></div>
+      <div>ACTIVE TARGET : <span id="hud-target">CHILIPI</span></div>
+      <div>SAMPLES : <span id="hud-count" style="color:var(--cyan)">0 / 200 samples</span></div>
+    </div>
+
+    <!-- LIMIT NOTICE -->
+    <div id="hud-notice" class="hidden">TOTAL LIMIT REACHED (200/200 FRAMES)</div>
+
+    <!-- CAM CONTROLS DOCK -->
+    <div id="cam-controls">
+      <button id="btn-record" class="btn btn-record" title="Click once to automatically record 200 samples">
+        &#x25B6; CAPTURE 200 SAMPLES
+      </button>
+      <button id="btn-single-snap" class="btn btn-secondary" title="Capture 1 frame">
+        &#x1F4F8; SNAP 1 FRAME
+      </button>
+      <button id="btn-test-mode" class="btn btn-mode">
+        &#x25B6; TEST LIVE
+      </button>
+      <button id="btn-clear-target" class="btn btn-danger" title="Clear samples for currently selected expression only">
+        &#x21BB; RESET THIS EXPRESSION
+      </button>
+    </div>
+
+    <!-- CAMERA ERROR MESSAGE -->
+    <div id="cam-error" class="hidden">
+      <div class="err-icon">&#x26A0;&#xFE0F;</div>
+      <h2 style="color:#ff6060;font-size:.9rem;letter-spacing:.15em">CAMERA ACCESS REQUIRED</h2>
+      <p style="font-size:.65rem;color:var(--green-dim)">Allow camera permissions to train expressions with your face.</p>
+    </div>
+  </section>
+
+  <!-- STUDIO CONTROLS & LIVE CLASSIFIER -->
+  <aside id="studio-panel">
+
+    <!-- LIVE MATCH PREVIEW -->
+    <div id="match-box">
+      <div id="match-img-wrap">
+        <img id="match-img" src="assets/neutral.png" alt="Expression Match">
+      </div>
+      <div class="match-info">
+        <div class="match-tag">REAL-TIME PREDICTION</div>
+        <div id="match-name">NEUTRAL</div>
+        <div id="match-conf-bar"><div id="match-conf-fill"></div></div>
+        <div id="match-conf-text">CONFIDENCE : 100%</div>
+      </div>
+    </div>
+
+    <!-- EXPRESSION LIST HEADER -->
+    <div id="expr-grid-header">
+      <span>CHOOSE TARGET TO TRAIN</span>
+      <span id="header-selected-hint" style="color:var(--green-dim)">SELECT A CARD</span>
+    </div>
+
+    <!-- 10 EXPRESSION CARDS -->
+    <div id="expr-list">
+      <!-- Injected dynamically via JS -->
+    </div>
+
+    <!-- FOOTER ACTIONS -->
+    <div id="studio-footer">
+      <button id="btn-save-model" class="btn btn-secondary">&#x1F4BE; SAVE PROFILE</button>
+      <button id="btn-export-json" class="btn btn-secondary">&#x2913; EXPORT JSON</button>
+      <button id="btn-import-json" class="btn btn-secondary">&#x2912; IMPORT JSON</button>
+      <button id="btn-reset-all" class="btn btn-danger">&#x21BB; RESET ALL</button>
+      <input type="file" id="file-importer" accept=".json" class="hidden">
+    </div>
+
+  </aside>
+</div>
+
+<!-- MEDIAPIPE SCRIPTS -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+"use strict";
+
+// ── 9 ACTIVE EXPRESSIONS (MATCHING IMAGE NAMES) ──────────────────────────
+const EXPRESSIONS = [
+  { id: "CHILIPI",     title: "😏 CHILIPI",     img: "assets/chilipi.png",     desc: "Brows up + squint + closed smile + nose scrunched" },
+  { id: "DOUBT",       title: "🤨 DOUBT",       img: "assets/doubt.png",       desc: "Squinting eyes + hand near mouth" },
+  { id: "HAPPY",     title: "😄 HAPPY",     img: "assets/happy.png",     desc: "Big upward smile" },
+  { id: "NEUTRAL",   title: "😐 NEUTRAL",   img: "assets/neutral.png",   desc: "Resting relaxed face" },
+  { id: "PICHA HAPPY", title: "🤪 PICHA HAPPY", img: "assets/picha happy.png", desc: "Crazy wide laughing open mouth" },
+  { id: "PROUD",     title: "😎 PROUD",     img: "assets/proud.png",     desc: "Head held high with a confident proud smirk" },
+  { id: "SHOCK",     title: "😲 SHOCK",     img: "assets/shock.png",     desc: "Wide open mouth & raised brows" },
+  { id: "SIGGU",     title: "😳 SIGGU",     img: "assets/siggu.png",     desc: "Shy face looking away or smiling softly" },
+  { id: "THINKING",  title: "🤔 THINKING",  img: "assets/thinking.png",  desc: "Hand resting under chin" }
+];
+
+// ── FACE & HAND LANDMARK INDICES ───────────────────────────────────────────
+const FL=234, FR=454, FT=10, FB=152;
+const ML=61,  MR=291, MT=13, MB=14;
+const ELL=159,ELB=145,ERL=386,ERB=374;
+const BLI=107,BLM=105,BRI=336,BRM=334;
+const NT=4,   NR=168;
+
+// ── APP & DATASET STATE ─────────────────────────────────────────────────────
+let currentTarget = "CHILIPI";
+let isRecording   = false;
+let testLiveMode  = false;
+let faceResults   = null;
+let handResults   = null;
+let prevTime      = performance.now();
+let fps           = 0;
+let pumping       = false;
+
+// Max limit of samples per each expression
+const SAMPLES_LIMIT = 200;
+
+// Dataset dictionary holding arrays of 11D feature vectors for each expression
+const customDataset = {};
+for (const e of EXPRESSIONS) {
+  customDataset[e.id] = [];
+}
+
+function getTotalFrames() {
+  let sum = 0;
+  for (const e of EXPRESSIONS) sum += (customDataset[e.id] ? customDataset[e.id].length : 0);
+  return sum;
+}
+
+// Try to load saved dataset from localStorage
+const SAVED_KEY = "KING_OF_EXPR_DATASET_V1";
+try {
+  const saved = localStorage.getItem(SAVED_KEY);
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (parsed["shy"] && (!parsed["PROUD"] || !parsed["PROUD"].length)) parsed["PROUD"] = parsed["shy"];
+    if (parsed["shocked"] && (!parsed["SHOCK"] || !parsed["SHOCK"].length)) parsed["SHOCK"] = parsed["shocked"];
+    if (parsed["skeptical"] && (!parsed["DOUBT"] || !parsed["DOUBT"].length)) parsed["DOUBT"] = parsed["skeptical"];
+    if (parsed["big_laugh"] && (!parsed["PICHA HAPPY"] || !parsed["PICHA HAPPY"].length)) parsed["PICHA HAPPY"] = parsed["big_laugh"];
+
+    for (const e of EXPRESSIONS) {
+      if (Array.isArray(parsed[e.id])) customDataset[e.id] = parsed[e.id];
+    }
+  }
+} catch (_) {}
+
+// ── DOM ELEMENTS ────────────────────────────────────────────────────────────
+const video       = document.getElementById("video");
+const canvas      = document.getElementById("cam-canvas");
+const ctx         = canvas.getContext("2d");
+const exprList    = document.getElementById("expr-list");
+const matchImg    = document.getElementById("match-img");
+const matchName   = document.getElementById("match-name");
+const matchConfFill = document.getElementById("match-conf-fill");
+const matchConfText = document.getElementById("match-conf-text");
+const hudMode     = document.getElementById("hud-mode");
+const hudTarget   = document.getElementById("hud-target");
+const hudCount    = document.getElementById("hud-count");
+const tbFps       = document.getElementById("tb-fps");
+const tbSamples   = document.getElementById("tb-samples-total");
+const hudNotice   = document.getElementById("hud-notice");
+const btnRecord   = document.getElementById("btn-record");
+const btnSnap     = document.getElementById("btn-single-snap");
+const btnTestMode = document.getElementById("btn-test-mode");
+const btnClearTgt = document.getElementById("btn-clear-target");
+const btnSave     = document.getElementById("btn-save-model");
+const btnExport   = document.getElementById("btn-export-json");
+const btnImport   = document.getElementById("btn-import-json");
+const btnResetAll = document.getElementById("btn-reset-all");
+const fileImporter= document.getElementById("file-importer");
+const camError    = document.getElementById("cam-error");
+
+// ── GEOMETRY & FEATURE EXTRACTION ──────────────────────────────────────────
+function d2d(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * Extracts an 11-dimensional normalized geometric feature vector from the face & hand.
+ * Invariant to face distance and scale in camera view.
+ */
+function extractFeatureVector(faceLM, handLM) {
+  const lm = faceLM;
+  const faceW = d2d(lm[FL], lm[FR]);
+  const faceH = d2d(lm[FT], lm[FB]);
+  if (faceW < 0.04 || faceH < 0.04) return null;
+
+  // Mouth metrics
+  const mouthOpen  = d2d(lm[MT], lm[MB]) / faceH;
+  const mouthWidth = d2d(lm[ML], lm[MR]) / faceW;
+  const lipCenterY = (lm[MT].y + lm[MB].y) / 2;
+  const cornerY    = (lm[ML].y + lm[MR].y) / 2;
+  const smileScore = (lipCenterY - cornerY) / faceH;
+
+  // Eye metrics
+  const eyeOpenL   = d2d(lm[ELL], lm[ELB]) / faceH;
+  const eyeOpenR   = d2d(lm[ERL], lm[ERB]) / faceH;
+  const eyeOpen    = (eyeOpenL + eyeOpenR) / 2;
+
+  // Brow metrics
+  const browL_y    = (lm[BLI].y + lm[BLM].y) / 2;
+  const browR_y    = (lm[BRI].y + lm[BRM].y) / 2;
+  const eyeL_y     = (lm[ELL].y + lm[ELB].y) / 2;
+  const eyeR_y     = (lm[ERL].y + lm[ERB].y) / 2;
+  const browRaise  = ((eyeL_y - browL_y) + (eyeR_y - browR_y)) / 2 / faceH;
+  const browFurrow = d2d(lm[BLI], lm[BRI]) / faceW;
+
+  // Nose metrics
+  const noseToBrow = Math.abs(lm[NT].y - (browL_y + browR_y) / 2) / faceH;
+  const noseLength = d2d(lm[NT], lm[NR]) / faceH;
+
+  // Hand proximity
+  let handNearChin = 0.0, handNearMouth = 0.0;
+  if (handLM && handLM.length) {
+    const chinX  = lm[FB].x, chinY = lm[FB].y;
+    const mouthX = (lm[ML].x + lm[MR].x) / 2;
+    const mouthY = (lm[MT].y + lm[MB].y) / 2;
+    for (const h of handLM) {
+      if (Math.hypot(h.x - chinX,  h.y - chinY)  < 0.15) handNearChin  = 1.0;
+      if (Math.hypot(h.x - mouthX, h.y - mouthY) < 0.13) handNearMouth = 1.0;
+    }
+  }
+
+  // Feature vector [11 dimensions]
+  return [
+    mouthOpen, mouthWidth, smileScore,
+    eyeOpen,   browRaise,  browFurrow,
+    noseToBrow, noseLength,
+    handNearChin, handNearMouth,
+    smileScore * mouthWidth // interaction term
+  ];
+}
+
+// ── K-NEAREST NEIGHBORS (KNN) CLASSIFIER ────────────────────────────────────
+function distVec(a, b) {
+  let sum = 0;
+  // Weighted Euclidean distance giving mouth and eyes slightly more significance
+  const weights = [2.0, 1.5, 2.5, 2.0, 2.0, 1.2, 1.2, 1.0, 2.5, 2.5, 1.5];
+  for (let i = 0; i < a.length; i++) {
+    const diff = (a[i] - b[i]) * weights[i];
+    sum += diff * diff;
+  }
+  return Math.sqrt(sum);
+}
+
+function predictExpression(vec) {
+  let totalSamples = 0;
+  const allSamples = [];
+
+  for (const [exprId, samples] of Object.entries(customDataset)) {
+    totalSamples += samples.length;
+    for (const s of samples) {
+      const d = distVec(vec, s);
+      allSamples.push({ exprId, dist: d });
+    }
+  }
+
+  // If no custom samples exist yet, return null (fallback to heuristic)
+  if (totalSamples === 0) return null;
+
+  // Sort by distance
+  allSamples.sort((a, b) => a.dist - b.dist);
+  const k = Math.min(5, allSamples.length);
+  const topK = allSamples.slice(0, k);
+
+  const votes = {};
+  for (const item of topK) {
+    votes[item.exprId] = (votes[item.exprId] || 0) + (1.0 / (item.dist + 0.001));
+  }
+
+  let bestExpr = "NEUTRAL", bestScore = -1, sumScore = 0;
+  for (const [id, score] of Object.entries(votes)) {
+    sumScore += score;
+    if (score > bestScore) {
+      bestScore = score;
+      bestExpr = id;
+    }
+  }
+
+  const confidence = sumScore > 0 ? Math.min(100, Math.round((bestScore / sumScore) * 100)) : 100;
+  return { expr: bestExpr, confidence };
+}
+
+// ── HEURISTIC FALLBACK (used before training) ──────────────────────────────
+function heuristicFallback(vec) {
+  const [mouthOpen, mouthWidth, smileScore, eyeOpen, browRaise, browFurrow, noseToBrow, noseLength, handNearChin, handNearMouth] = vec;
+
+  if (mouthOpen > 0.13 && eyeOpen > 0.046 && browRaise > 0.060) return { expr: "SHOCKED", confidence: 92 };
+  if (browRaise > 0.04 && smileScore > 0.005) return { expr: "PROUD", confidence: 88 };
+  if (handNearChin > 0.5 && mouthOpen < 0.07) return { expr: "THINKING", confidence: 94 };
+  if (handNearMouth > 0.5 && eyeOpen < 0.033) return { expr: "SKEPTICAL", confidence: 91 };
+  const noseSqueezed = (noseToBrow < 0.26) || (browFurrow < 0.22) || (noseLength < 0.14);
+  if (browRaise > 0.045 && eyeOpen < 0.038 && smileScore > 0.003 && mouthOpen < 0.07 && noseSqueezed) return { expr: "CHILIPI", confidence: 90 };
+  if (eyeOpen > 0.048 && mouthOpen < 0.09) return { expr: "WIDE_EYES", confidence: 88 };
+  if (smileScore < -0.009 && mouthOpen < 0.10) return { expr: "SAD", confidence: 85 };
+  if (smileScore > 0.011 && mouthWidth > 0.47) return { expr: "HAPPY", confidence: 90 };
+  if (smileScore > 0.005 && mouthWidth > 0.42) return { expr: "CONTENT", confidence: 87 };
+
+  return { expr: "NEUTRAL", confidence: 80 };
+}
+
+// ── UI BUILDER: 9 CARDS ────────────────────────────────────────────────────
+function buildExprCards() {
+  exprList.innerHTML = "";
+  for (const expr of EXPRESSIONS) {
+    const card = document.createElement("div");
+    card.className = "expr-card" + (expr.id === currentTarget ? " selected" : "");
+    card.id = "card-" + expr.id.replace(/\s+/g, "-");
+    card.dataset.id = expr.id;
+
+    const count = (customDataset[expr.id] || []).length;
+    card.innerHTML = `
+      <div class="ec-thumb-wrap">
+        <img class="ec-thumb" src="${expr.img}" alt="${expr.id}">
+      </div>
+      <div class="ec-row">
+        <span class="ec-title">${expr.title}</span>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span class="ec-badge ${count > 0 ? "has-samples" : ""}" id="badge-${expr.id.replace(/\s+/g, "-")}">${count}/${SAMPLES_LIMIT}</span>
+          <button class="ec-reset-btn" data-id="${expr.id}" title="Reset only ${expr.title}">&#x21BB;</button>
+        </div>
+      </div>
+    `;
+
+    card.addEventListener("click", (e) => {
+      if (e.target.classList.contains("ec-reset-btn")) {
+        e.stopPropagation();
+        resetSingleExpression(expr.id);
+        return;
+      }
+      selectTarget(expr.id);
+    });
+    exprList.appendChild(card);
+  }
+}
+
+function selectTarget(exprId) {
+  currentTarget = exprId;
+  document.querySelectorAll(".expr-card").forEach(c => {
+    c.classList.toggle("selected", c.dataset.id === exprId);
+  });
+  hudTarget.textContent = exprId;
+  updateCounts();
+}
+
+function showNotice(msg) {
+  if (!hudNotice) return;
+  hudNotice.textContent = msg;
+  hudNotice.classList.remove("hidden");
+  clearTimeout(hudNotice._t);
+  hudNotice._t = setTimeout(() => hudNotice.classList.add("hidden"), 3000);
+}
+
+function saveToLocalStorage() {
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(customDataset));
+  } catch (_) {}
+}
+
+function resetSingleExpression(exprId) {
+  if (confirm(`Reset all samples for '${exprId}'?`)) {
+    customDataset[exprId] = [];
+    if (isRecording && currentTarget === exprId) stopRecord();
+    updateCounts();
+    saveToLocalStorage();
+    showNotice(`Reset samples for ${exprId}`);
+  }
+}
+
+function updateCounts() {
+  const total = getTotalFrames();
+  for (const expr of EXPRESSIONS) {
+    const cnt = (customDataset[expr.id] || []).length;
+    const badge = document.getElementById("badge-" + expr.id.replace(/\s+/g, "-"));
+    if (badge) {
+      badge.textContent = `${cnt}/${SAMPLES_LIMIT}`;
+      badge.classList.toggle("has-samples", cnt > 0);
+    }
+  }
+  const curCount = (customDataset[currentTarget] || []).length;
+  hudCount.textContent = `${curCount} / ${SAMPLES_LIMIT} samples`;
+  tbSamples.textContent = `${total} SAMPLES TRAINED`;
+
+  btnClearTgt.textContent = `↺ RESET ${currentTarget}`;
+  updateRecordButton();
+}
+
+function updateRecordButton() {
+  const curCount = (customDataset[currentTarget] || []).length;
+  if (isRecording) {
+    btnRecord.classList.add("recording");
+    btnRecord.innerHTML = `<span class="rec-dot"></span> RECORDING ${curCount}/${SAMPLES_LIMIT} (CLICK TO STOP)`;
+    btnRecord.classList.remove("limit-reached");
+  } else {
+    btnRecord.classList.remove("recording");
+    if (curCount >= SAMPLES_LIMIT) {
+      btnRecord.innerHTML = `✓ FULL (${SAMPLES_LIMIT}/${SAMPLES_LIMIT}) — READY`;
+      btnRecord.classList.add("limit-reached");
+    } else {
+      btnRecord.innerHTML = `&#x25B6; CAPTURE 200 SAMPLES (${curCount}/${SAMPLES_LIMIT})`;
+      btnRecord.classList.remove("limit-reached");
+    }
+  }
+}
+
+// ── RECORDING SAMPLE PIPELINE ──────────────────────────────────────────────
+function recordCurrentFrame() {
+  if (!faceResults || !faceResults.multiFaceLandmarks || !faceResults.multiFaceLandmarks.length) return false;
+
+  const curCount = (customDataset[currentTarget] || []).length;
+  if (curCount >= SAMPLES_LIMIT) {
+    stopRecord();
+    saveToLocalStorage();
+    showNotice(`✓ Done! 200 samples reached for ${currentTarget}`);
+    return false;
+  }
+
+  const faceLM = faceResults.multiFaceLandmarks[0];
+  const handLM = (handResults && handResults.multiHandLandmarks && handResults.multiHandLandmarks.length)
+    ? handResults.multiHandLandmarks[0] : null;
+
+  const vec = extractFeatureVector(faceLM, handLM);
+  if (!vec) return false;
+
+  customDataset[currentTarget].push(vec);
+  updateCounts();
+
+  if (customDataset[currentTarget].length >= SAMPLES_LIMIT) {
+    stopRecord();
+    saveToLocalStorage();
+    showNotice(`✓ 200 samples completed for ${currentTarget}!`);
+  }
+  return true;
+}
+
+// ── CANVAS DRAWING ─────────────────────────────────────────────────────────
+function syncCanvas() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  if (canvas.width !== Math.round(r.width) || canvas.height !== Math.round(r.height)) {
+    canvas.width = Math.round(r.width);
+    canvas.height = Math.round(r.height);
+  }
+}
+
+function drawFaceOverlays(lms) {
+  const W = canvas.width, H = canvas.height;
+  const contours = (typeof FACEMESH_CONTOURS !== "undefined") ? FACEMESH_CONTOURS : (window.FACEMESH_CONTOURS || []);
+  if (contours.length) {
+    ctx.save();
+    ctx.globalAlpha = 0.35; ctx.strokeStyle = "#004d1f"; ctx.lineWidth = 0.8;
+    for (const [s, e] of contours) {
+      ctx.beginPath();
+      ctx.moveTo((1 - lms[s].x) * W, lms[s].y * H);
+      ctx.lineTo((1 - lms[e].x) * W, lms[e].y * H);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Highlight key points with Amber/Green glow
+  const keyPts = [ML,MR,MT,MB, ELL,ELB,ERL,ERB, BLI,BLM,BRI,BRM, NT, NR];
+  ctx.save();
+  ctx.fillStyle = isRecording ? "#ffb830" : "#00dc50";
+  ctx.shadowBlur = 10; ctx.shadowColor = isRecording ? "rgba(255,184,48,.8)" : "rgba(0,220,80,.6)";
+  for (const idx of keyPts) {
+    const lm = lms[idx];
+    ctx.beginPath();
+    ctx.arc((1 - lm.x) * W, lm.y * H, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawHandOverlays(lms) {
+  const W = canvas.width, H = canvas.height;
+  const pts = lms.map(lm => [(1 - lm.x) * W, lm.y * H]);
+  const conns = (typeof HAND_CONNECTIONS !== "undefined") ? HAND_CONNECTIONS : (window.HAND_CONNECTIONS || []);
+
+  if (conns.length) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(0,220,80,.6)"; ctx.lineWidth = 2; ctx.lineCap = "round";
+    for (const [s, e] of conns) {
+      ctx.beginPath(); ctx.moveTo(pts[s][0], pts[s][1]); ctx.lineTo(pts[e][0], pts[e][1]); ctx.stroke();
+    }
+    ctx.fillStyle = "#00dc50";
+    for (const [px, py] of pts) {
+      ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ── RENDER & PREDICTION LOOP ────────────────────────────────────────────────
+let lastPredExpr = "";
+function renderLoop() {
+  syncCanvas();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Mirrored video frame
+  if (video.readyState >= 2) {
+    ctx.save();
+    ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  // Draw face mesh
+  if (faceResults && faceResults.multiFaceLandmarks && faceResults.multiFaceLandmarks.length) {
+    drawFaceOverlays(faceResults.multiFaceLandmarks[0]);
+  }
+
+  // Draw hand skeleton
+  if (handResults && handResults.multiHandLandmarks && handResults.multiHandLandmarks.length) {
+    drawHandOverlays(handResults.multiHandLandmarks[0]);
+  }
+
+  // Continuous capture when holding record button
+  if (isRecording) {
+    recordCurrentFrame();
+  }
+
+  // Real-time classification
+  if (faceResults && faceResults.multiFaceLandmarks && faceResults.multiFaceLandmarks.length) {
+    const faceLM = faceResults.multiFaceLandmarks[0];
+    const handLM = (handResults && handResults.multiHandLandmarks && handResults.multiHandLandmarks.length)
+      ? handResults.multiHandLandmarks[0] : null;
+    const vec = extractFeatureVector(faceLM, handLM);
+
+    if (vec) {
+      const pred = predictExpression(vec) || heuristicFallback(vec);
+      const exprData = EXPRESSIONS.find(e => e.id === pred.expr);
+
+      if (pred.expr !== lastPredExpr) {
+        lastPredExpr = pred.expr;
+        matchName.textContent = pred.expr;
+        if (exprData) matchImg.src = exprData.img;
+        document.querySelectorAll(".expr-card").forEach(c => {
+          c.classList.toggle("matched", c.dataset.id === pred.expr);
+        });
+      }
+      matchConfFill.style.width = pred.confidence + "%";
+      matchConfText.textContent = `CONFIDENCE : ${pred.confidence}% (${customDataset[pred.expr].length} user samples)`;
+    }
+  }
+
+  // FPS Counter
+  const now = performance.now();
+  fps = 1000 / Math.max(now - prevTime, 1);
+  prevTime = now;
+  tbFps.textContent = "FPS: " + fps.toFixed(0);
+
+  requestAnimationFrame(renderLoop);
+}
+
+// ── EVENT LISTENERS & RECORDING CONTROLS ────────────────────────────────────
+function startRecord() {
+  const curCount = (customDataset[currentTarget] || []).length;
+  if (curCount >= SAMPLES_LIMIT) {
+    showNotice(`${currentTarget} already has 200 samples! Click Reset to re-record.`);
+    return;
+  }
+  isRecording = true;
+  updateRecordButton();
+}
+
+function stopRecord() {
+  isRecording = false;
+  updateRecordButton();
+}
+
+// Single-click toggle: click once to capture 200 samples automatically!
+btnRecord.addEventListener("click", () => {
+  if (isRecording) {
+    stopRecord();
+    showNotice(`Recording paused at ${(customDataset[currentTarget] || []).length}/200 samples.`);
+  } else {
+    startRecord();
+  }
+});
+
+// Reset ONLY the currently active expression
+btnClearTgt.addEventListener("click", () => {
+  resetSingleExpression(currentTarget);
+});
+
+btnSnap.addEventListener("click", () => {
+  const curCount = (customDataset[currentTarget] || []).length;
+  if (curCount >= SAMPLES_LIMIT) {
+    showNotice(`${currentTarget} reached limit of 200 samples!`);
+    return;
+  }
+  const ok = recordCurrentFrame();
+  if (ok) {
+    btnSnap.classList.add("flash-pulse");
+    setTimeout(() => btnSnap.classList.remove("flash-pulse"), 350);
+  }
+});
+
+btnTestMode.addEventListener("click", () => {
+  testLiveMode = !testLiveMode;
+  btnTestMode.classList.toggle("active", testLiveMode);
+  btnTestMode.innerHTML = testLiveMode ? "&#x2714; TESTING LIVE" : "&#x25B6; TEST LIVE";
+  hudMode.textContent = testLiveMode ? "TESTING" : "CALIBRATION";
+  hudMode.style.color = testLiveMode ? "var(--amber)" : "var(--green)";
+});
+
+btnResetAll.addEventListener("click", () => {
+  if (confirm("Reset and clear all trained samples across ALL 9 expressions?")) {
+    for (const e of EXPRESSIONS) customDataset[e.id] = [];
+    localStorage.removeItem(SAVED_KEY);
+    updateCounts();
+  }
+});
+
+btnSave.addEventListener("click", () => {
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(customDataset));
+    alert("Profile saved to your browser storage! It will persist across refreshes.");
+  } catch (err) {
+    alert("Could not save to localStorage: " + err);
+  }
+});
+
+btnExport.addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(customDataset, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "king_of_expressions_profile.json";
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+btnImport.addEventListener("click", () => fileImporter.click());
+fileImporter.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const data = JSON.parse(evt.target.result);
+      for (const expr of EXPRESSIONS) {
+        if (Array.isArray(data[expr.id])) customDataset[expr.id] = data[expr.id];
+      }
+      updateCounts();
+      alert("Successfully imported custom expression profile!");
+    } catch (err) {
+      alert("Invalid JSON file: " + err);
+    }
+  };
+  reader.readAsText(file);
+});
+
+async function init() {
+  // Auto-load downloaded king_of_expressions_profile.json if present
+  try {
+    const res = await fetch("king_of_expressions_profile.json");
+    if (res.ok) {
+      const json = await res.json();
+      for (const expr of EXPRESSIONS) {
+        if (Array.isArray(json[expr.id]) && json[expr.id].length > 0) {
+          customDataset[expr.id] = json[expr.id];
+        }
+      }
+    }
+  } catch (_) {}
+
+  buildExprCards();
+  updateCounts();
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }
+    });
+  } catch (err) {
+    console.error("Camera access failed:", err);
+    camError.classList.remove("hidden");
+    return;
+  }
+
+  video.srcObject = stream;
+  await new Promise(res => {
+    if (video.readyState >= 1) return res();
+    video.onloadedmetadata = () => res();
+    setTimeout(res, 1200);
+  });
+  try {
+    await video.play();
+  } catch (e) {
+    console.warn("video.play error:", e);
+  }
+
+  // Start rendering canvas loop immediately so camera is visible right away!
+  requestAnimationFrame(renderLoop);
+
+  // FaceMesh Model
+  const faceMeshModel = new FaceMesh({
+    locateFile: f => "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/" + f
+  });
+  faceMeshModel.setOptions({ maxNumFaces: 1, refineLandmarks: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+  faceMeshModel.onResults(r => { faceResults = r; });
+
+  // Hands Model
+  const handsModel = new Hands({
+    locateFile: f => "https://cdn.jsdelivr.net/npm/@mediapipe/hands/" + f
+  });
+  handsModel.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+  handsModel.onResults(r => { handResults = r; });
+
+  // Pumping frames into MediaPipe models
+  async function pump() {
+    if (!pumping && video.readyState >= 2) {
+      pumping = true;
+      try {
+        await faceMeshModel.send({ image: video });
+        await handsModel.send({ image: video });
+      } catch (_) {}
+      pumping = false;
+    }
+    requestAnimationFrame(pump);
+  }
+
+  requestAnimationFrame(pump);
+}
+
+window.addEventListener("load", init);
+window.addEventListener("resize", syncCanvas);
+</script>
+</body>
+</html>

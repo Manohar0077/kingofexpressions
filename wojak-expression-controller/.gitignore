@@ -1,0 +1,11 @@
+# Secret / Private captures
+people/
+people/*
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# OS artifacts
+.DS_Store
+Thumbs.db

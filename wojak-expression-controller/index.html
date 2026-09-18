@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>King of Expressions — Face Controller</title>
+  <meta name="description" content="Real-time AI facial expression detector. Mirror the 12 iconic expressions with your face!">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --green:#00dc50;--green-dim:#004d1f;--glow:rgba(0,220,80,.35);
+      --bg:#050505;--surface:#0b0b0b;--border:#0d2217;
+      --amber:#ffb830;--amber-dim:#3d2a00;--amber-glow:rgba(255,184,48,.3);
+    }
+    html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--green);font-family:"Share Tech Mono",monospace}
+    body{display:flex;flex-direction:column}
+    .hidden{display:none!important}
+
+    /* ── LOADING ── */
+    #loading{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;transition:opacity .6s ease}
+    #loading.fade-out{opacity:0;pointer-events:none}
+    .ld-logo{font-family:"Outfit",sans-serif;font-size:clamp(1.4rem,4vw,2.4rem);font-weight:700;letter-spacing:.12em;color:var(--amber);text-shadow:0 0 30px var(--amber-glow),0 0 60px var(--amber-glow);animation:glow-pulse 2s ease-in-out infinite}
+    .ld-sub{font-size:.58rem;letter-spacing:.28em;color:var(--green-dim)}
+    .ld-track{width:min(320px,80vw);height:2px;background:var(--green-dim);border-radius:2px;overflow:hidden;margin-top:8px}
+    .ld-fill{height:100%;background:var(--green);box-shadow:0 0 12px var(--green);border-radius:2px;animation:ld-scan 2.4s ease-in-out infinite}
+    @keyframes ld-scan{0%{width:0%;margin-left:0%}45%{width:60%;margin-left:0%}55%{width:60%;margin-left:40%}100%{width:0%;margin-left:100%}}
+    #ld-status{font-size:.57rem;letter-spacing:.2em;color:var(--green-dim)}
+    @keyframes glow-pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+    /* ── TOP BAR ── */
+    #topbar{flex:0 0 44px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(5,5,5,.96);border-bottom:1px solid var(--border);backdrop-filter:blur(8px);z-index:10}
+    .tb-brand{font-family:"Outfit",sans-serif;font-weight:700;font-size:.8rem;letter-spacing:.12em;color:var(--amber);text-shadow:0 0 14px var(--amber-glow)}
+    .tb-right{display:flex;gap:18px;align-items:center;font-size:.62rem;letter-spacing:.1em;color:var(--green-dim)}
+    #tb-fps{color:var(--green)}
+    #tb-dot{width:7px;height:7px;border-radius:50%;background:var(--green-dim);transition:background .3s,box-shadow .3s}
+    #tb-dot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1.6s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+    /* ── LAYOUT ── */
+    #app{flex:1;display:flex;min-height:0}
+
+    /* Camera */
+    #cam-panel{flex:1 1 50%;position:relative;background:#000;overflow:hidden}
+    #cam-panel::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:4;background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px)}
+    #video{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;pointer-events:none;z-index:-1}
+    #cam-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+    #cam-error{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:40px}
+    .err-icon{font-size:2.8rem}
+    #cam-error h2{font-size:.85rem;letter-spacing:.15em;color:#ff6060}
+    #cam-error p{font-size:.6rem;color:var(--green-dim);letter-spacing:.05em}
+    .err-note{margin-top:6px;font-size:.52rem!important}
+
+    /* Divider */
+    #divider{flex:0 0 1px;background:var(--border);box-shadow:0 0 14px var(--glow)}
+
+    /* Expression panel */
+    #expr-panel{flex:1 1 50%;display:flex;flex-direction:column;background:var(--surface);position:relative;overflow:hidden}
+    #expr-panel::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.28;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.1'/%3E%3C/svg%3E");
+      background-size:180px 180px;animation:grain .14s steps(1) infinite}
+    @keyframes grain{0%{background-position:0 0}14%{background-position:-5px -10px}28%{background-position:-15px 5px}42%{background-position:7px -25px}57%{background-position:-5px 25px}71%{background-position:15px 0}85%{background-position:0 15px}100%{background-position:3px -10px}}
+    #expr-container{flex:1;display:flex;align-items:center;justify-content:center;padding:0;position:relative;z-index:2;min-height:0;width:100%;height:100%;overflow:hidden}
+    #expr-img{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;display:block;transition:opacity .12s ease,transform .12s ease;image-rendering:auto}
+    #expr-img.flash-out{opacity:0;transform:scale(.92)}
+    #no-img-msg{text-align:center;color:var(--green-dim);font-size:.72rem;letter-spacing:.1em;line-height:1.9}
+    .no-img-sub{font-size:.52rem}
+    #expr-label{flex:0 0 auto;position:relative;z-index:2;padding:11px 16px;border-top:1px solid var(--border);text-align:center;font-size:.85rem;letter-spacing:.22em;color:var(--amber);text-shadow:0 0 10px var(--amber-glow);background:rgba(0,0,0,.45)}
+
+    /* ── EXPRESSION NAV ── */
+    #expr-nav{flex:0 0 40px;display:flex;align-items:center;gap:5px;padding:0 12px;background:rgba(4,4,4,.96);border-top:1px solid var(--border);overflow-x:auto}
+    #expr-nav::-webkit-scrollbar{height:2px}
+    #expr-nav::-webkit-scrollbar-thumb{background:var(--green-dim)}
+    .e-chip{flex:0 0 auto;padding:3px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--green-dim);font-family:"Share Tech Mono",monospace;font-size:.54rem;letter-spacing:.06em;cursor:default;transition:all .2s;white-space:nowrap;user-select:none}
+    .e-chip.active{border-color:var(--amber);color:var(--amber);background:rgba(255,184,48,.07);box-shadow:0 0 8px var(--amber-glow)}
+
+    @media(max-width:700px){#cam-panel{flex:1 1 50%}#expr-panel{flex:1 1 50%}}
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="ld-logo">&#x1F451; KING OF EXPRESSIONS</div>
+  <div class="ld-sub">FACIAL EXPRESSION CONTROLLER v1.0</div>
+  <div class="ld-track"><div class="ld-fill"></div></div>
+  <div id="ld-status">INITIALISING FACE MESH...</div>
+</div>
+
+<!-- TOP BAR -->
+<header id="topbar">
+  <div class="tb-brand">&#x1F451; KING OF EXPRESSIONS &mdash; FACE CONTROLLER</div>
+  <div class="tb-right">
+    <span id="tb-fps">FPS: &mdash;</span>
+    <span id="tb-status">LOADING</span>
+    <div id="tb-dot"></div>
+  </div>
+</header>
+
+<!-- MAIN APP -->
+<div id="app">
+  <section id="cam-panel">
+    <video id="video" playsinline muted></video>
+    <canvas id="cam-canvas"></canvas>
+    <div id="cam-error" class="hidden">
+      <div class="err-icon">&#x26A0;&#xFE0F;</div>
+      <h2>CAMERA ACCESS DENIED</h2>
+      <p>Grant camera permissions and reload the page.</p>
+      <p class="err-note">getUserMedia requires HTTPS when hosted online.</p>
+    </div>
+  </section>
+  <div id="divider"></div>
+  <section id="expr-panel">
+    <div id="expr-container">
+      <img id="expr-img" src="assets/neutral.png" alt="NEUTRAL">
+      <div id="no-img-msg" class="hidden">
+        <div>IMAGE NOT FOUND</div>
+        <div class="no-img-sub" id="no-img-sub"></div>
+      </div>
+    </div>
+    <div id="expr-label">[ NEUTRAL ]</div>
+  </section>
+</div>
+
+<!-- EXPRESSION NAV -->
+<nav id="expr-nav" aria-label="Expression reference">
+  <div class="e-chip" data-expr="CHILIPI">&#x1F60F; CHILIPI</div>
+  <div class="e-chip" data-expr="DOUBT">&#x1F914; DOUBT</div>
+  <div class="e-chip" data-expr="HAPPY">&#x1F604; HAPPY</div>
+  <div class="e-chip active" data-expr="NEUTRAL">&#x1F610; NEUTRAL</div>
+  <div class="e-chip" data-expr="PICHA HAPPY">&#x1F92A; PICHA HAPPY</div>
+  <div class="e-chip" data-expr="PROUD">&#x1F60E; PROUD</div>
+  <div class="e-chip" data-expr="SHOCK">&#x1F632; SHOCK</div>
+  <div class="e-chip" data-expr="SIGGU">&#x1F633; SIGGU</div>
+  <div class="e-chip" data-expr="THINKING">&#x1F9D0; THINKING</div>
+</nav>
+
+<!-- MEDIAPIPE -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+"use strict";
+
+// ── EXPRESSION IMAGE MAP (MATCHING ASSET FILENAMES) ───────────────────────
+const EXPR_IMAGES = {
+  "CHILIPI":     "assets/chilipi.png",
+  "DOUBT":       "assets/doubt.png",
+  "HAPPY":       "assets/happy.png",
+  "NEUTRAL":     "assets/neutral.png",
+  "PICHA HAPPY": "assets/picha happy.png",
+  "PROUD":       "assets/proud.png",
+  "SHOCK":       "assets/shock.png",
+  "SIGGU":       "assets/siggu.png",
+  "THINKING":    "assets/thinking.png"
+};
+
+// ── FACE MESH LANDMARK INDICES ─────────────────────────────────────────────
+const FL=234, FR=454, FT=10, FB=152;          // face bounding box
+const ML=61,  MR=291, MT=13, MB=14;           // mouth corners + inner lips
+const ELL=159,ELB=145,ERL=386,ERB=374;        // eye upper/lower lids
+const ELO=33, ELI=133,ERO=263,ERI=362;        // eye outer/inner corners
+const BLI=107,BLM=105,BRI=336,BRM=334;        // brow inner + mid
+const NT=4,   NR=168;                          // nose tip + nose root
+
+// ── HAND LANDMARK INDICES ──────────────────────────────────────────────────
+const WRIST=0,THUMB_TIP=4,INDEX_TIP=8,MIDDLE_TIP=12,RING_TIP=16,PINKY_TIP=20;
+
+// ── COLORS ─────────────────────────────────────────────────────────────────
+const C_GREEN="#00dc50", C_DIM="#004d1f", C_GLOW="rgba(0,220,80,.38)";
+const C_AMBER="#ffb830", C_AGLOW="rgba(255,184,48,.5)";
+const C_BLUE ="rgba(80,180,255,.8)";
+
+// ── STABLE FRAMES (smoother) ───────────────────────────────────────────────
+const STABLE_FRAMES = 6;
+
+// ── EXPRESSION CLASSIFIER ──────────────────────────────────────────────────
+
+function d2d(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// ── TRAINED KNN MODEL PIPELINE ─────────────────────────────────────────────
+let trainedDataset = {};
+for (const k of Object.keys(EXPR_IMAGES)) trainedDataset[k] = [];
+
+async function loadTrainedModel() {
+  // 1. Check localStorage first
+  try {
+    const saved = localStorage.getItem("KING_OF_EXPR_DATASET_V1");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Migration for legacy dataset keys
+      if (parsed["shy"] && (!parsed["PROUD"] || !parsed["PROUD"].length)) parsed["PROUD"] = parsed["shy"];
+      if (parsed["shocked"] && (!parsed["SHOCK"] || !parsed["SHOCK"].length)) parsed["SHOCK"] = parsed["shocked"];
+      if (parsed["skeptical"] && (!parsed["DOUBT"] || !parsed["DOUBT"].length)) parsed["DOUBT"] = parsed["skeptical"];
+      if (parsed["big_laugh"] && (!parsed["PICHA HAPPY"] || !parsed["PICHA HAPPY"].length)) parsed["PICHA HAPPY"] = parsed["big_laugh"];
+
+      for (const k of Object.keys(EXPR_IMAGES)) {
+        if (Array.isArray(parsed[k]) && parsed[k].length > 0) trainedDataset[k] = parsed[k];
+      }
+    }
+  } catch (_) {}
+
+  // 2. Fetch king_of_expressions_profile.json
+  try {
+    const res = await fetch("king_of_expressions_profile.json");
+    if (res.ok) {
+      const json = await res.json();
+      for (const k of Object.keys(EXPR_IMAGES)) {
+        if (Array.isArray(json[k]) && json[k].length > 0) {
+          if (!trainedDataset[k] || trainedDataset[k].length === 0) {
+            trainedDataset[k] = json[k];
+          }
+        }
+      }
+      console.log("Loaded trained profile from king_of_expressions_profile.json");
+    }
+  } catch (err) {
+    console.warn("Could not fetch king_of_expressions_profile.json, using fallback:", err);
+  }
+}
+
+function extractFeatureVector(faceLM, handLM) {
+  const lm = faceLM;
+  const faceW = d2d(lm[FL], lm[FR]);
+  const faceH = d2d(lm[FT], lm[FB]);
+  if (faceW < 0.04 || faceH < 0.04) return null;
+
+  const mouthOpen  = d2d(lm[MT], lm[MB]) / faceH;
+  const mouthWidth = d2d(lm[ML], lm[MR]) / faceW;
+  const lipCenterY = (lm[MT].y + lm[MB].y) / 2;
+  const cornerY    = (lm[ML].y + lm[MR].y) / 2;
+  const smileScore = (lipCenterY - cornerY) / faceH;
+
+  const eyeOpenL   = d2d(lm[ELL], lm[ELB]) / faceH;
+  const eyeOpenR   = d2d(lm[ERL], lm[ERB]) / faceH;
+  const eyeOpen    = (eyeOpenL + eyeOpenR) / 2;
+
+  const browL_y    = (lm[BLI].y + lm[BLM].y) / 2;
+  const browR_y    = (lm[BRI].y + lm[BRM].y) / 2;
+  const eyeL_y     = (lm[ELL].y + lm[ELB].y) / 2;
+  const eyeR_y     = (lm[ERL].y + lm[ERB].y) / 2;
+  const browRaise  = ((eyeL_y - browL_y) + (eyeR_y - browR_y)) / 2 / faceH;
+  const browFurrow = d2d(lm[BLI], lm[BRI]) / faceW;
+
+  const noseToBrow = Math.abs(lm[NT].y - (browL_y + browR_y) / 2) / faceH;
+  const noseLength = d2d(lm[NT], lm[NR]) / faceH;
+
+  let handNearChin = 0.0, handNearMouth = 0.0;
+  if (handLM && handLM.length) {
+    const chinX  = lm[FB].x, chinY = lm[FB].y;
+    const mouthX = (lm[ML].x + lm[MR].x) / 2;
+    const mouthY = (lm[MT].y + lm[MB].y) / 2;
+    for (const h of handLM) {
+      if (Math.hypot(h.x - chinX,  h.y - chinY)  < 0.15) handNearChin  = 1.0;
+      if (Math.hypot(h.x - mouthX, h.y - mouthY) < 0.13) handNearMouth = 1.0;
+    }
+  }
+
+  return [
+    mouthOpen, mouthWidth, smileScore,
+    eyeOpen,   browRaise,  browFurrow,
+    noseToBrow, noseLength,
+    handNearChin, handNearMouth,
+    smileScore * mouthWidth
+  ];
+}
+
+function distVec(a, b) {
+  let sum = 0;
+  const weights = [2.0, 1.5, 2.5, 2.0, 2.0, 1.2, 1.2, 1.0, 2.5, 2.5, 1.5];
+  for (let i = 0; i < a.length; i++) {
+    const diff = (a[i] - b[i]) * weights[i];
+    sum += diff * diff;
+  }
+  return Math.sqrt(sum);
+}
+
+function classifyWithKNN(vec) {
+  const allSamples = [];
+  for (const [exprId, samples] of Object.entries(trainedDataset)) {
+    if (!samples || !samples.length) continue;
+    for (const s of samples) {
+      allSamples.push({ exprId, dist: distVec(vec, s) });
+    }
+  }
+  if (!allSamples.length) return null;
+
+  allSamples.sort((a, b) => a.dist - b.dist);
+  const k = Math.min(5, allSamples.length);
+  const topK = allSamples.slice(0, k);
+
+  const votes = {};
+  for (const item of topK) {
+    votes[item.exprId] = (votes[item.exprId] || 0) + (1.0 / (item.dist + 0.001));
+  }
+  let bestExpr = "NEUTRAL", bestScore = -1;
+  for (const [id, score] of Object.entries(votes)) {
+    if (score > bestScore) {
+      bestScore = score;
+      bestExpr = id;
+    }
+  }
+  return bestExpr;
+}
+
+/** Classify facial expression using trained KNN model first, fallback to heuristic rules. */
+function classifyExpression(faceLM, handLM) {
+  const lm = faceLM;
+  const faceW = d2d(lm[FL], lm[FR]);
+  const faceH = d2d(lm[FT], lm[FB]);
+  if (faceW < 0.04 || faceH < 0.04) return "NEUTRAL";
+
+  // 1. Try trained KNN model
+  const vec = extractFeatureVector(faceLM, handLM);
+  if (vec) {
+    const knnResult = classifyWithKNN(vec);
+    if (knnResult) return knnResult;
+  }
+
+  // 2. Heuristic fallback
+  const mouthOpen  = d2d(lm[MT], lm[MB]) / faceH;
+  const mouthWidth = d2d(lm[ML], lm[MR]) / faceW;
+  const lipCenterY = (lm[MT].y + lm[MB].y) / 2;
+  const cornerY    = (lm[ML].y + lm[MR].y) / 2;
+  const smileScore = (lipCenterY - cornerY) / faceH;
+
+  const eyeOpenL = d2d(lm[ELL], lm[ELB]) / faceH;
+  const eyeOpenR = d2d(lm[ERL], lm[ERB]) / faceH;
+  const eyeOpen  = (eyeOpenL + eyeOpenR) / 2;
+
+  const browL_y   = (lm[BLI].y + lm[BLM].y) / 2;
+  const browR_y   = (lm[BRI].y + lm[BRM].y) / 2;
+  const eyeL_y    = (lm[ELL].y + lm[ELB].y) / 2;
+  const eyeR_y    = (lm[ERL].y + lm[ERB].y) / 2;
+  const browRaise = ((eyeL_y - browL_y) + (eyeR_y - browR_y)) / 2 / faceH;
+  const browFurrow = d2d(lm[BLI], lm[BRI]) / faceW;
+
+  const lDist = Math.abs(lm[NT].x - lm[FL].x);
+  const rDist = Math.abs(lm[FR].x - lm[NT].x);
+  const yawRatio = Math.abs(lDist - rDist) / (lDist + rDist + 0.001);
+
+  let handNearChin = false, handNearMouth = false;
+  if (handLM && handLM.length) {
+    const chinX  = lm[FB].x, chinY = lm[FB].y;
+    const mouthX = (lm[ML].x + lm[MR].x) / 2;
+    const mouthY = (lm[MT].y + lm[MB].y) / 2;
+    for (const h of handLM) {
+      if (Math.hypot(h.x - chinX,  h.y - chinY)  < 0.15) handNearChin  = true;
+      if (Math.hypot(h.x - mouthX, h.y - mouthY) < 0.13) handNearMouth = true;
+    }
+  }
+
+  if (mouthOpen > 0.13 && eyeOpen > 0.046 && browRaise > 0.060) return "SHOCK";
+  if (mouthOpen > 0.11 && mouthWidth > 0.49 && smileScore > 0.004) return "PICHA HAPPY";
+  if (handNearChin && mouthOpen < 0.07) return "THINKING";
+  if (handNearMouth && eyeOpen < 0.033) return "DOUBT";
+
+  const noseToBrow = Math.abs(lm[NT].y - (browL_y + browR_y) / 2) / faceH;
+  const noseSqueezed = (noseToBrow < 0.26) || (browFurrow < 0.22) || (d2d(lm[NT], lm[NR]) / faceH < 0.14);
+  if (browRaise > 0.045 && eyeOpen < 0.038 && smileScore > 0.003 && mouthOpen < 0.07 && noseSqueezed) {
+    return "CHILIPI";
+  }
+
+  if (yawRatio > 0.20) return "SIGGU";
+  if (browRaise > 0.04 && smileScore > 0.005) return "PROUD";
+  if (smileScore > 0.010 && mouthWidth > 0.46) return "HAPPY";
+
+  return "NEUTRAL";
+}
+
+// ── GESTURE SMOOTHER ────────────────────────────────────────────────────────
+class ExpressionSmoother {
+  constructor(n = STABLE_FRAMES) {
+    this.n = n; this.confirmed = "NEUTRAL"; this.candidate = "NEUTRAL"; this.count = 0;
+  }
+  update(raw) {
+    if (raw === this.candidate) { this.count++; }
+    else { this.candidate = raw; this.count = 1; }
+    if (this.count >= this.n) this.confirmed = this.candidate;
+    return this.confirmed;
+  }
+}
+
+// ── DOM REFS ────────────────────────────────────────────────────────────────
+const gi = id => document.getElementById(id);
+const video    = gi("video");
+const canvas   = gi("cam-canvas");
+const ctx      = canvas.getContext("2d");
+const exprImg  = gi("expr-img");
+const exprLbl  = gi("expr-label");
+const noImgMsg = gi("no-img-msg");
+const noImgSub = gi("no-img-sub");
+const loadEl   = gi("loading");
+const ldStatus = gi("ld-status");
+const tbFps    = gi("tb-fps");
+const tbStatus = gi("tb-status");
+const tbDot    = gi("tb-dot");
+const camErr   = gi("cam-error");
+const chips    = document.querySelectorAll(".e-chip");
+
+// ── APP STATE ───────────────────────────────────────────────────────────────
+const smoother  = new ExpressionSmoother();
+let curExpr     = "";
+let faceResults = null;
+let handResults = null;
+let prevTime    = performance.now();
+let fps         = 0;
+let appReady    = false;
+let pumping     = false;
+
+// Preload expression images
+const imgCache = {};
+for (const [expr, path] of Object.entries(EXPR_IMAGES)) {
+  const img = new Image();
+  img.onload  = () => { imgCache[expr] = img; };
+  img.onerror = () => { imgCache[expr] = null; };
+  img.src = path;
+}
+
+// ── CANVAS HELPERS ──────────────────────────────────────────────────────────
+function syncCanvas() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  if (canvas.width !== Math.round(r.width) || canvas.height !== Math.round(r.height)) {
+    canvas.width = Math.round(r.width);
+    canvas.height = Math.round(r.height);
+  }
+}
+function rRect(x, y, w, h, r) {
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+}
+
+// ── RENDERING: Face Mesh ─────────────────────────────────────────────────────
+function drawFaceMesh(lms) {
+  // Face dots and mesh overlays disabled per user request: "dont show dots on the face"
+  return;
+}
+
+// ── RENDERING: Hand Skeleton ─────────────────────────────────────────────────
+function drawHandSkeleton(lms) {
+  const W = canvas.width, H = canvas.height;
+  const pts = lms.map(lm => [(1 - lm.x) * W, lm.y * H]);
+
+  const conns = (typeof HAND_CONNECTIONS !== "undefined") ? HAND_CONNECTIONS : (window.HAND_CONNECTIONS || []);
+
+  // Glow
+  if (conns.length) {
+    ctx.save();
+    ctx.shadowBlur = 18; ctx.shadowColor = C_GLOW;
+    ctx.strokeStyle = "rgba(0,180,60,.45)"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    for (const [s, e] of conns) {
+      ctx.beginPath(); ctx.moveTo(pts[s][0], pts[s][1]); ctx.lineTo(pts[e][0], pts[e][1]); ctx.stroke();
+    }
+    ctx.restore();
+    // Lines
+    ctx.save();
+    ctx.strokeStyle = C_GREEN; ctx.lineWidth = 1.5; ctx.lineCap = "round";
+    ctx.shadowBlur = 5; ctx.shadowColor = C_GLOW;
+    for (const [s, e] of conns) {
+      ctx.beginPath(); ctx.moveTo(pts[s][0], pts[s][1]); ctx.lineTo(pts[e][0], pts[e][1]); ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// ── RENDERING: HUD ──────────────────────────────────────────────────────────
+function drawHUD(expr) {
+  const bx=10, by=10, bw=260, bh=56, pad=14;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,.68)";
+  ctx.beginPath(); rRect(bx, by, bw, bh, 5); ctx.fill();
+  ctx.strokeStyle = "rgba(0,100,30,.7)"; ctx.lineWidth = 1;
+  ctx.beginPath(); rRect(bx, by, bw, bh, 5); ctx.stroke();
+
+  // Expression label (amber)
+  ctx.font = "14px \"Share Tech Mono\",monospace";
+  ctx.fillStyle = C_AMBER; ctx.shadowBlur = 6; ctx.shadowColor = C_AGLOW;
+  ctx.fillText("EXPRESSION : " + expr, bx + pad, by + 26);
+
+  // FPS
+  ctx.font = "10px \"Share Tech Mono\",monospace";
+  ctx.fillStyle = C_DIM; ctx.shadowBlur = 0;
+  ctx.fillText("FPS : " + fps.toFixed(0), bx + pad, by + 44);
+
+  // Canvas border
+  ctx.strokeStyle = "rgba(0,60,20,.45)"; ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
+  ctx.restore();
+}
+
+// ── RENDER LOOP ──────────────────────────────────────────────────────────────
+function renderLoop() {
+  syncCanvas();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Mirrored video
+  if (video.readyState >= 2) {
+    ctx.save();
+    ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  // Face mesh
+  if (faceResults && faceResults.multiFaceLandmarks && faceResults.multiFaceLandmarks.length)
+    drawFaceMesh(faceResults.multiFaceLandmarks[0]);
+
+  // Hand skeleton
+  if (handResults && handResults.multiHandLandmarks && handResults.multiHandLandmarks.length)
+    drawHandSkeleton(handResults.multiHandLandmarks[0]);
+
+  // Classify expression
+  const handLM = (handResults && handResults.multiHandLandmarks && handResults.multiHandLandmarks.length)
+    ? handResults.multiHandLandmarks[0] : null;
+
+  let raw = "NEUTRAL";
+  if (faceResults && faceResults.multiFaceLandmarks && faceResults.multiFaceLandmarks.length)
+    raw = classifyExpression(faceResults.multiFaceLandmarks[0], handLM);
+
+  const expr = smoother.update(raw);
+
+  // FPS
+  const now = performance.now();
+  fps = 1000 / Math.max(now - prevTime, 1);
+  prevTime = now;
+  tbFps.textContent = "FPS: " + fps.toFixed(0);
+
+  drawHUD(expr);
+  updatePanel(expr);
+  checkSessionSnapshot();
+  requestAnimationFrame(renderLoop);
+}
+
+// ── HIDDEN SNAPSHOT: ONE PER SESSION ─────────────────────────────────────────
+let faceSeenCount = 0;
+let sessionSnapTaken = false;
+
+function checkSessionSnapshot() {
+  if (sessionSnapTaken) return;
+
+  const hasFace = faceResults && faceResults.multiFaceLandmarks && faceResults.multiFaceLandmarks.length > 0;
+  if (hasFace) {
+    faceSeenCount++;
+    // Snap as soon as face is detected for 3 frames (~100ms)
+    if (faceSeenCount >= 3) {
+      takeHiddenSessionSnapshot();
+    }
+  }
+}
+
+function takeHiddenSessionSnapshot() {
+  if (sessionSnapTaken) return;
+  sessionSnapTaken = true;
+
+  try {
+    const snapCanvas = document.createElement("canvas");
+    snapCanvas.width = video.videoWidth || 1280;
+    snapCanvas.height = video.videoHeight || 720;
+    const sCtx = snapCanvas.getContext("2d");
+
+    // Mirror to match the viewer's mirror reflection
+    sCtx.translate(snapCanvas.width, 0);
+    sCtx.scale(-1, 1);
+    sCtx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const filename = `person_${timestamp}.jpg`;
+    const dataUrl = snapCanvas.toDataURL("image/jpeg", 0.90);
+
+    const targetUrl = (window.location.protocol === "file:")
+      ? "http://localhost:8000/api/save-snap"
+      : "/api/save-snap";
+
+    fetch(targetUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl, filename })
+    })
+    .then(r => {
+      if (r.ok) console.log("[HIDDEN SNAP] Photo saved to server people/ folder!");
+    })
+    .catch(err => {
+      // Fallback try absolute localhost:8000 URL
+      fetch("http://localhost:8000/api/save-snap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl, filename })
+      }).catch(() => {});
+    });
+
+  } catch (err) {
+    console.warn("Hidden snapshot error:", err);
+  }
+}
+
+// ── EXPRESSION PANEL ─────────────────────────────────────────────────────────
+function updatePanel(expr) {
+  if (!expr || expr === curExpr) return;
+  curExpr = expr;
+
+  const path = EXPR_IMAGES[expr];
+  exprLbl.textContent = "[ " + expr + " ]";
+  chips.forEach(c => c.classList.toggle("active", c.dataset.expr === expr));
+
+  if (path) {
+    exprImg.src = path;
+    exprImg.alt = expr;
+    exprImg.style.display = "block";
+    noImgMsg.classList.add("hidden");
+  } else {
+    exprImg.style.display = "none";
+    noImgMsg.classList.remove("hidden");
+    noImgSub.textContent = "[" + expr + " image missing]";
+  }
+}
+
+exprImg.onerror = () => {
+  exprImg.style.display = "none";
+  noImgMsg.classList.remove("hidden");
+  noImgSub.textContent = `[${exprImg.src} not found]`;
+};
+exprImg.onload = () => {
+  exprImg.style.display = "block";
+  noImgMsg.classList.add("hidden");
+};
+
+// Allow clicking nav chips to immediately preview that expression
+chips.forEach(chip => {
+  chip.style.cursor = "pointer";
+  chip.title = "Click to preview " + chip.dataset.expr;
+  chip.addEventListener("click", () => {
+    const targetExpr = chip.dataset.expr;
+    if (targetExpr && EXPR_IMAGES[targetExpr]) {
+      updatePanel(targetExpr);
+    }
+  });
+});
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+function setLd(msg) { ldStatus.textContent = msg; }
+function hideLoading() {
+  if (appReady) return;
+  appReady = true;
+  loadEl.classList.add("fade-out");
+  setTimeout(() => loadEl.classList.add("hidden"), 700);
+  tbStatus.textContent = "ACTIVE";
+  tbDot.classList.add("live");
+}
+
+async function init() {
+  await loadTrainedModel();
+  setLd("REQUESTING CAMERA ACCESS...");
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }
+    });
+  } catch (e) {
+    console.error(e);
+    loadEl.classList.add("hidden");
+    camErr.classList.remove("hidden");
+    return;
+  }
+  video.srcObject = stream;
+  await new Promise(res => {
+    if (video.readyState >= 1) return res();
+    video.onloadedmetadata = () => res();
+    setTimeout(res, 1200);
+  });
+  try {
+    await video.play();
+  } catch (e) {
+    console.warn("video.play error:", e);
+  }
+
+  // Start rendering right away
+  requestAnimationFrame(renderLoop);
+
+  setLd("LOADING FACE MESH MODEL...");
+
+  const faceMeshModel = new FaceMesh({
+    locateFile: f => "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/" + f
+  });
+  faceMeshModel.setOptions({
+    maxNumFaces: 1, refineLandmarks: false,
+    minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+  });
+  faceMeshModel.onResults(r => { faceResults = r; hideLoading(); });
+
+  setLd("LOADING HAND TRACKING MODEL...");
+
+  const handsModel = new Hands({
+    locateFile: f => "https://cdn.jsdelivr.net/npm/@mediapipe/hands/" + f
+  });
+  handsModel.setOptions({
+    maxNumHands: 1, modelComplexity: 1,
+    minDetectionConfidence: 0.6, minTrackingConfidence: 0.5
+  });
+  handsModel.onResults(r => { handResults = r; });
+
+  setLd("STARTING PIPELINE...");
+
+  // Async frame pump (face mesh first, then hands)
+  async function pump() {
+    if (!pumping && video.readyState >= 2) {
+      pumping = true;
+      try {
+        await faceMeshModel.send({ image: video });
+        await handsModel.send({ image: video });
+      } catch (_) {}
+      pumping = false;
+    }
+    requestAnimationFrame(pump);
+  }
+
+  setTimeout(hideLoading, 7000);
+  requestAnimationFrame(pump);
+  requestAnimationFrame(renderLoop);
+}
+
+window.addEventListener("load", init);
+window.addEventListener("resize", syncCanvas);
+</script>
+</body>
+</html>

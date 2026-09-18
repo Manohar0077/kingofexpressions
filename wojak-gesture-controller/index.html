@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wojak Gesture Controller</title>
+  <meta name="description" content="Real-time AI hand-gesture controller. Point, flash peace signs, thumbs up - watch your Wojak react instantly in the browser.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--green:#00dc50;--green-dim:#004d1f;--glow:rgba(0,220,80,.35);--bg:#050505;--surface:#0b0b0b;--border:#0d2217}
+    html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--green);font-family:"Share Tech Mono",monospace}
+    body{display:flex;flex-direction:column}
+    .hidden{display:none!important}
+
+    /* LOADING */
+    #loading{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;transition:opacity .6s ease}
+    #loading.fade-out{opacity:0;pointer-events:none}
+    .ld-logo{font-family:"Outfit",sans-serif;font-size:clamp(1.6rem,4vw,2.6rem);font-weight:700;letter-spacing:.15em;color:var(--green);text-shadow:0 0 30px var(--glow),0 0 60px var(--glow);animation:glow-pulse 2s ease-in-out infinite}
+    .ld-sub{font-size:.6rem;letter-spacing:.3em;color:var(--green-dim)}
+    .ld-track{width:min(320px,80vw);height:2px;background:var(--green-dim);border-radius:2px;overflow:hidden;margin-top:8px}
+    .ld-fill{height:100%;background:var(--green);box-shadow:0 0 12px var(--green);border-radius:2px;animation:ld-scan 2.4s ease-in-out infinite}
+    @keyframes ld-scan{0%{width:0%;margin-left:0%}45%{width:60%;margin-left:0%}55%{width:60%;margin-left:40%}100%{width:0%;margin-left:100%}}
+    #ld-status{font-size:.58rem;letter-spacing:.2em;color:var(--green-dim)}
+    @keyframes glow-pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+    /* TOP BAR */
+    #topbar{flex:0 0 44px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(5,5,5,.96);border-bottom:1px solid var(--border);backdrop-filter:blur(8px);z-index:10}
+    .tb-brand{font-family:"Outfit",sans-serif;font-weight:700;font-size:.8rem;letter-spacing:.12em;color:var(--green);text-shadow:0 0 14px var(--glow)}
+    .tb-right{display:flex;gap:18px;align-items:center;font-size:.62rem;letter-spacing:.1em;color:var(--green-dim)}
+    #tb-fps{color:var(--green)}
+    #tb-dot{width:7px;height:7px;border-radius:50%;background:var(--green-dim);transition:background .3s,box-shadow .3s}
+    #tb-dot.live{background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1.6s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+    /* LAYOUT */
+    #app{flex:1;display:flex;min-height:0}
+    #cam-panel{flex:0 0 65%;position:relative;background:#000;overflow:hidden}
+    #cam-panel::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:4;background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,rgba(0,0,0,.045) 2px,rgba(0,0,0,.045) 4px)}
+    #video{position:absolute;width:1px;height:1px;visibility:hidden}
+    #cam-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+    #cam-error{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:40px}
+    .err-icon{font-size:2.8rem}
+    #cam-error h2{font-size:.85rem;letter-spacing:.15em;color:#ff6060}
+    #cam-error p{font-size:.6rem;color:var(--green-dim);letter-spacing:.05em}
+    .err-note{margin-top:6px;font-size:.52rem!important}
+    #divider{flex:0 0 1px;background:var(--border);box-shadow:0 0 14px var(--glow)}
+    #meme-panel{flex:0 0 35%;display:flex;flex-direction:column;background:var(--surface);position:relative;overflow:hidden}
+    #meme-panel::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.28;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.1'/%3E%3C/svg%3E");
+      background-size:180px 180px;animation:grain .14s steps(1) infinite}
+    @keyframes grain{0%{background-position:0 0}14%{background-position:-5px -10px}28%{background-position:-15px 5px}42%{background-position:7px -25px}57%{background-position:-5px 25px}71%{background-position:15px 0}85%{background-position:0 15px}100%{background-position:3px -10px}}
+    #meme-container{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;position:relative;z-index:2;min-height:0}
+    #meme-img{max-width:100%;max-height:100%;object-fit:contain;display:block;transition:opacity .13s ease,transform .13s ease}
+    #meme-img.flash-out{opacity:0;transform:scale(.93)}
+    #no-img-msg{text-align:center;color:var(--green-dim);font-size:.72rem;letter-spacing:.1em;line-height:1.9}
+    .no-img-sub{font-size:.52rem}
+    #meme-label{flex:0 0 auto;position:relative;z-index:2;padding:11px 16px;border-top:1px solid var(--border);text-align:center;font-size:.85rem;letter-spacing:.22em;color:var(--green);text-shadow:0 0 10px var(--glow);background:rgba(0,0,0,.45)}
+
+    /* GESTURE NAV */
+    #gesture-nav{flex:0 0 40px;display:flex;align-items:center;gap:6px;padding:0 14px;background:rgba(4,4,4,.96);border-top:1px solid var(--border);overflow-x:auto}
+    #gesture-nav::-webkit-scrollbar{height:2px}
+    #gesture-nav::-webkit-scrollbar-thumb{background:var(--green-dim)}
+    .g-chip{flex:0 0 auto;padding:3px 10px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--green-dim);font-family:"Share Tech Mono",monospace;font-size:.58rem;letter-spacing:.08em;cursor:default;transition:all .2s;white-space:nowrap;user-select:none}
+    .g-chip.active{border-color:var(--green);color:var(--green);background:rgba(0,220,80,.07);box-shadow:0 0 8px var(--glow)}
+
+    @media(max-width:700px){#cam-panel{flex:0 0 60%}#meme-panel{flex:0 0 40%}}
+  </style>
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading">
+  <div class="ld-logo">&#x2B21; WOJAK.EXE</div>
+  <div class="ld-sub">GESTURE CONTROLLER v2.0 &mdash; WEB EDITION</div>
+  <div class="ld-track"><div class="ld-fill"></div></div>
+  <div id="ld-status">INITIALISING NEURAL NETWORKS...</div>
+</div>
+
+<!-- TOP BAR -->
+<header id="topbar">
+  <div class="tb-brand">&#x2B21; WOJAK GESTURE CONTROLLER</div>
+  <div class="tb-right">
+    <span id="tb-fps">FPS: &mdash;</span>
+    <span id="tb-status">LOADING</span>
+    <div id="tb-dot"></div>
+  </div>
+</header>
+
+<!-- MAIN APP -->
+<div id="app">
+  <section id="cam-panel">
+    <video id="video" playsinline muted></video>
+    <canvas id="cam-canvas"></canvas>
+    <div id="cam-error" class="hidden">
+      <div class="err-icon">&#x26A0;&#xFE0F;</div>
+      <h2>CAMERA ACCESS DENIED</h2>
+      <p>Grant camera permissions and reload the page.</p>
+      <p class="err-note">getUserMedia requires HTTPS when hosted online.<br>
+        Use GitHub Pages, Netlify, or Vercel for free HTTPS hosting.</p>
+    </div>
+  </section>
+  <div id="divider"></div>
+  <section id="meme-panel">
+    <div id="meme-container">
+      <img id="meme-img" alt="Wojak meme" style="display:none">
+      <div id="no-img-msg" class="hidden">
+        <div>IMAGE NOT FOUND</div>
+        <div class="no-img-sub" id="no-img-sub"></div>
+      </div>
+    </div>
+    <div id="meme-label">[ &mdash; ]</div>
+  </section>
+</div>
+
+<!-- GESTURE NAV BAR -->
+<nav id="gesture-nav" aria-label="Gesture reference">
+  <div class="g-chip active" data-gesture="NEUTRAL">&#x270A; NEUTRAL</div>
+  <div class="g-chip" data-gesture="POINTING">&#x261D; POINTING</div>
+  <div class="g-chip" data-gesture="PEACE">&#x270C; PEACE</div>
+  <div class="g-chip" data-gesture="SOYJAK">&#x1F590; SOYJAK</div>
+  <div class="g-chip" data-gesture="RODENT">&#x1F595; RODENT</div>
+  <div class="g-chip" data-gesture="THUMBS_UP">&#x1F44D; THUMBS_UP</div>
+</nav>
+
+<!-- MEDIAPIPE CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+"use strict";
+
+// ── CONSTANTS ────────────────────────────────────────────────────────────────
+const STABLE_FRAMES = 5;
+
+// MediaPipe hand landmark indices (identical to Python version)
+const WRIST=0, THUMB_CMC=1, THUMB_MCP=2, THUMB_IP=3, THUMB_TIP=4;
+const INDEX_MCP=5,  INDEX_PIP=6,  INDEX_DIP=7,  INDEX_TIP=8;
+const MIDDLE_MCP=9, MIDDLE_PIP=10, MIDDLE_DIP=11, MIDDLE_TIP=12;
+const RING_MCP=13,  RING_PIP=14,  RING_DIP=15,  RING_TIP=16;
+const PINKY_MCP=17, PINKY_PIP=18, PINKY_DIP=19, PINKY_TIP=20;
+
+const GESTURE_IMAGES = {
+  NEUTRAL:   "assets/neutral.png",
+  POINTING:  "assets/pointing.png",
+  SOYJAK:    "assets/sojak.png",
+  RODENT:    "assets/middle.png",
+  THUMBS_UP: "assets/thumbs_up.png",
+  PEACE:     "assets/peace.png"
+};
+
+const C_GREEN = "#00dc50", C_DIM = "#004d1f", C_GLOW = "rgba(0,220,80,.38)";
+
+// ── GESTURE CLASSIFIER (direct JS port of Python classify_gesture) ───────────
+function fingerExtended(lm, tip, pip, mcp) {
+  return lm[tip].y < lm[pip].y && lm[pip].y < lm[mcp].y;
+}
+function thumbExtended(lm) {
+  const sz = Math.abs(lm[MIDDLE_MCP].x - lm[WRIST].x);
+  if (sz < 1e-6) return false;
+  const lat = Math.abs(lm[THUMB_TIP].x - lm[THUMB_CMC].x);
+  return lm[THUMB_TIP].y < lm[THUMB_IP].y && lat / sz > 0.35;
+}
+function classifyGesture(lm) {
+  const th = thumbExtended(lm);
+  const ix = fingerExtended(lm, INDEX_TIP,  INDEX_PIP,  INDEX_MCP);
+  const mx = fingerExtended(lm, MIDDLE_TIP, MIDDLE_PIP, MIDDLE_MCP);
+  const rx = fingerExtended(lm, RING_TIP,   RING_PIP,   RING_MCP);
+  const px = fingerExtended(lm, PINKY_TIP,  PINKY_PIP,  PINKY_MCP);
+  if (th && !ix && !mx && !rx && !px) return "THUMBS_UP";
+  if (ix && !mx && !rx && !px)         return "POINTING";
+  if (mx && !ix && !rx && !px)         return "RODENT";
+  if (ix && mx && !rx && !px)          return "PEACE";
+  if (ix && mx && rx && px)            return "SOYJAK";
+  return "NEUTRAL";
+}
+
+// ── GESTURE SMOOTHER (JS port of Python GestureSmoother class) ───────────────
+class GestureSmoother {
+  constructor(n = STABLE_FRAMES) {
+    this.n = n; this.confirmed = "NEUTRAL"; this.candidate = "NEUTRAL"; this.count = 0;
+  }
+  update(raw) {
+    if (raw === this.candidate) { this.count++; }
+    else { this.candidate = raw; this.count = 1; }
+    if (this.count >= this.n) this.confirmed = this.candidate;
+    return this.confirmed;
+  }
+}
+
+// ── DOM REFS ─────────────────────────────────────────────────────────────────
+const gi = id => document.getElementById(id);
+const video     = gi("video");
+const canvas    = gi("cam-canvas");
+const ctx       = canvas.getContext("2d");
+const memeImg   = gi("meme-img");
+const memeLabel = gi("meme-label");
+const noImgMsg  = gi("no-img-msg");
+const noImgSub  = gi("no-img-sub");
+const loadingEl = gi("loading");
+const ldStatus  = gi("ld-status");
+const tbFps     = gi("tb-fps");
+const tbStatus  = gi("tb-status");
+const tbDot     = gi("tb-dot");
+const camError  = gi("cam-error");
+const chips     = document.querySelectorAll(".g-chip");
+
+// ── APP STATE ─────────────────────────────────────────────────────────────────
+const smoother = new GestureSmoother();
+let currentGesture = "", handResults = null, faceResults = null;
+let prevTime = performance.now(), fps = 0, appReady = false, pumping = false;
+
+// Preload meme images into <img> objects at startup
+const memeCache = {};
+for (const [g, path] of Object.entries(GESTURE_IMAGES)) {
+  const img = new Image();
+  img.onload  = () => { memeCache[g] = img; };
+  img.onerror = () => { memeCache[g] = null; };
+  img.src = path;
+}
+
+// ── CANVAS HELPERS ────────────────────────────────────────────────────────────
+function syncCanvas() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  if (canvas.width !== Math.round(r.width) || canvas.height !== Math.round(r.height)) {
+    canvas.width = Math.round(r.width);
+    canvas.height = Math.round(r.height);
+  }
+}
+function rRect(x, y, w, h, r) {
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+}
+
+// ── RENDER: Face Mesh ─────────────────────────────────────────────────────────
+function drawFaceMesh(lms) {
+  const W = canvas.width, H = canvas.height;
+  ctx.save();
+  ctx.globalAlpha = 0.42; ctx.strokeStyle = C_DIM; ctx.lineWidth = 0.8;
+  for (const [s, e] of FACEMESH_CONTOURS) {
+    ctx.beginPath();
+    ctx.moveTo((1 - lms[s].x) * W, lms[s].y * H);
+    ctx.lineTo((1 - lms[e].x) * W, lms[e].y * H);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.22; ctx.fillStyle = C_DIM;
+  for (const lm of lms) {
+    ctx.beginPath(); ctx.arc((1 - lm.x) * W, lm.y * H, 1, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ── RENDER: Hand Skeleton ─────────────────────────────────────────────────────
+function drawHandSkeleton(lms) {
+  const W = canvas.width, H = canvas.height;
+  // Mirror X: (1 - lm.x) matches the flipped video frame
+  const pts = lms.map(lm => [(1 - lm.x) * W, lm.y * H]);
+
+  // Glow pass (thick blurred lines)
+  ctx.save();
+  ctx.shadowBlur = 22; ctx.shadowColor = C_GLOW;
+  ctx.strokeStyle = "rgba(0,180,60,.48)"; ctx.lineWidth = 5; ctx.lineCap = "round";
+  for (const [s, e] of HAND_CONNECTIONS) {
+    ctx.beginPath(); ctx.moveTo(pts[s][0], pts[s][1]); ctx.lineTo(pts[e][0], pts[e][1]); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Crisp connector lines
+  ctx.save();
+  ctx.strokeStyle = C_GREEN; ctx.lineWidth = 1.5; ctx.lineCap = "round";
+  ctx.shadowBlur = 6; ctx.shadowColor = C_GLOW;
+  for (const [s, e] of HAND_CONNECTIONS) {
+    ctx.beginPath(); ctx.moveTo(pts[s][0], pts[s][1]); ctx.lineTo(pts[e][0], pts[e][1]); ctx.stroke();
+  }
+  ctx.restore();
+
+  // Landmark dots
+  ctx.save();
+  ctx.fillStyle = C_GREEN; ctx.shadowBlur = 10; ctx.shadowColor = C_GLOW;
+  for (const [px, py] of pts) {
+    ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ── RENDER: HUD Overlay ───────────────────────────────────────────────────────
+function drawHUD(gesture) {
+  const bx = 10, by = 10, bw = 268, bh = 66, pad = 14;
+  ctx.save();
+  // Panel bg
+  ctx.fillStyle = "rgba(0,0,0,.65)";
+  ctx.beginPath(); rRect(bx, by, bw, bh, 5); ctx.fill();
+  ctx.strokeStyle = "rgba(0,100,30,.75)"; ctx.lineWidth = 1;
+  ctx.beginPath(); rRect(bx, by, bw, bh, 5); ctx.stroke();
+  // Gesture text
+  ctx.font = "14px \"Share Tech Mono\",monospace";
+  ctx.fillStyle = C_GREEN; ctx.shadowBlur = 7; ctx.shadowColor = C_GLOW;
+  ctx.fillText("GESTURE : " + gesture, bx + pad, by + 29);
+  // FPS
+  ctx.font = "11px \"Share Tech Mono\",monospace";
+  ctx.fillStyle = C_DIM; ctx.shadowBlur = 0;
+  ctx.fillText("FPS : " + fps.toFixed(0), bx + pad, by + 52);
+  // Canvas border
+  ctx.strokeStyle = "rgba(0,60,20,.5)"; ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
+  ctx.restore();
+}
+
+// ── RENDER LOOP ───────────────────────────────────────────────────────────────
+function renderLoop() {
+  syncCanvas();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw mirrored video frame
+  if (video.readyState >= 2) {
+    ctx.save();
+    ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  // Face mesh (drawn beneath hand skeleton)
+  if (faceResults && faceResults.multiFaceLandmarks && faceResults.multiFaceLandmarks.length)
+    drawFaceMesh(faceResults.multiFaceLandmarks[0]);
+
+  // Classify gesture + draw hand
+  let raw = "NEUTRAL";
+  if (handResults && handResults.multiHandLandmarks && handResults.multiHandLandmarks.length) {
+    raw = classifyGesture(handResults.multiHandLandmarks[0]);
+    drawHandSkeleton(handResults.multiHandLandmarks[0]);
+  }
+
+  const gesture = smoother.update(raw);
+
+  // FPS
+  const now = performance.now();
+  fps = 1000 / Math.max(now - prevTime, 1);
+  prevTime = now;
+  tbFps.textContent = "FPS: " + fps.toFixed(0);
+
+  drawHUD(gesture);
+  updateMemePanel(gesture);
+  requestAnimationFrame(renderLoop);
+}
+
+// ── MEME PANEL ────────────────────────────────────────────────────────────────
+function updateMemePanel(gesture) {
+  if (gesture === currentGesture) return;
+  memeImg.classList.add("flash-out");
+  setTimeout(() => {
+    const img = memeCache[gesture];
+    if (img && img.naturalWidth > 0) {
+      memeImg.src = img.src;
+      memeImg.style.display = "block";
+      noImgMsg.classList.add("hidden");
+    } else if (gesture in memeCache && memeCache[gesture] === null) {
+      memeImg.style.display = "none";
+      noImgMsg.classList.remove("hidden");
+      noImgSub.textContent = "[" + GESTURE_IMAGES[gesture] + " not found]";
+    } else {
+      memeImg.style.display = "none";
+      noImgMsg.classList.add("hidden");
+    }
+    memeLabel.textContent = "[ " + gesture + " ]";
+    memeImg.classList.remove("flash-out");
+    chips.forEach(c => c.classList.toggle("active", c.dataset.gesture === gesture));
+    currentGesture = gesture;
+  }, 110);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+function setLdStatus(msg) { ldStatus.textContent = msg; }
+
+function hideLoading() {
+  if (appReady) return;
+  appReady = true;
+  loadingEl.classList.add("fade-out");
+  setTimeout(() => loadingEl.classList.add("hidden"), 700);
+  tbStatus.textContent = "ACTIVE";
+  tbDot.classList.add("live");
+}
+
+async function init() {
+  setLdStatus("REQUESTING CAMERA ACCESS...");
+
+  // Get webcam stream
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }
+    });
+  } catch (err) {
+    console.error("Camera error:", err);
+    loadingEl.classList.add("hidden");
+    camError.classList.remove("hidden");
+    return;
+  }
+  video.srcObject = stream;
+  await new Promise(res => { video.onloadedmetadata = res; });
+  video.play();
+
+  setLdStatus("LOADING HAND-TRACKING MODEL...");
+
+  // MediaPipe Hands
+  const handsModel = new Hands({
+    locateFile: f => "https://cdn.jsdelivr.net/npm/@mediapipe/hands/" + f
+  });
+  handsModel.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
+  handsModel.onResults(r => { handResults = r; hideLoading(); });
+
+  setLdStatus("LOADING FACE MESH MODEL...");
+
+  // MediaPipe FaceMesh
+  const faceMeshModel = new FaceMesh({
+    locateFile: f => "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/" + f
+  });
+  faceMeshModel.setOptions({ maxNumFaces: 1, refineLandmarks: false, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+  faceMeshModel.onResults(r => { faceResults = r; });
+
+  setLdStatus("STARTING PIPELINE...");
+
+  // Async frame pump — sends video frames to MediaPipe, decoupled from the render loop
+  async function pump() {
+    if (!pumping && video.readyState >= 2) {
+      pumping = true;
+      try {
+        await handsModel.send({ image: video });
+        await faceMeshModel.send({ image: video });
+      } catch (_) {}
+      pumping = false;
+    }
+    requestAnimationFrame(pump);
+  }
+
+  // Fallback: hide loading after 7s even if no hand is in frame
+  setTimeout(hideLoading, 7000);
+
+  requestAnimationFrame(pump);
+  requestAnimationFrame(renderLoop);
+}
+
+window.addEventListener("load", init);
+window.addEventListener("resize", syncCanvas);
+</script>
+</body>
+</html>

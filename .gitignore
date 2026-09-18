@@ -1,0 +1,16 @@
+# Secret / Private captures
+people/
+people/*
+
+# Python cache & venv
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
