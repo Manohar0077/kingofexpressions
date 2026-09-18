@@ -1,6 +1,6 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/wojak-expression-controller/$1" }
+    { "source": "/((?!api/).*)", "destination": "/wojak-expression-controller/$1" }
   ]
 }
